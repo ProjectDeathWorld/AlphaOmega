@@ -1,3 +1,4 @@
+// ...keep imports unchanged
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -10,6 +11,7 @@ import {
   TouchableWithoutFeedback,
   Keyboard,
   StyleSheet,
+  TouchableOpacity,
 } from 'react-native';
 import * as SQLite from 'expo-sqlite';
 import { riddles } from '../app/riddles';
@@ -31,23 +33,22 @@ type AnswerRecord = {
   isCorrect: boolean;
 };
 
-// Setup database and create table
 export const setupDatabase = async () => {
   db = await SQLite.openDatabaseAsync('answers.db');
-  await db.execAsync(
-    `CREATE TABLE IF NOT EXISTS answers (
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS answers (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       question TEXT,
       correctAnswer TEXT,
       userAnswer TEXT,
       isCorrect INTEGER
-    );`
-  );
+    );
+  `);
 };
 
 async function saveAnswersToDB(answers: AnswerRecord[]) {
   if (!db) return;
-  await db.execAsync('DELETE FROM answers;'); // Clear previous answers
+  await db.execAsync('DELETE FROM answers;');
   for (const a of answers) {
     await db.runAsync(
       'INSERT INTO answers (question, correctAnswer, userAnswer, isCorrect) VALUES (?, ?, ?, ?);',
@@ -59,15 +60,12 @@ async function saveAnswersToDB(answers: AnswerRecord[]) {
 async function fetchAnswersFromDB(): Promise<AnswerRecord[]> {
   if (!db) return [];
   const results = await db.getAllAsync('SELECT question, correctAnswer, userAnswer, isCorrect FROM answers;');
-return results.map((row) => {
-  const r = row as { question: string; correctAnswer: string; userAnswer: string; isCorrect: number };
-  return {
-    question: r.question,
-    correctAnswer: r.correctAnswer,
-    userAnswer: r.userAnswer,
-    isCorrect: !!r.isCorrect,
-  };
-});
+  return results.map(row => ({
+    question: row.question,
+    correctAnswer: row.correctAnswer,
+    userAnswer: row.userAnswer,
+    isCorrect: !!row.isCorrect,
+  }));
 }
 
 export default function LevelSelector() {
@@ -76,18 +74,24 @@ export default function LevelSelector() {
   if (!level) {
     return (
       <View style={styles.container}>
-        <Text style={styles.title}>Select Level</Text>
-        <Button title="Easy" onPress={() => setLevel('easy')} />
-        <Button title="Normal" onPress={() => setLevel('normal')} />
-        <Button title="Hard" onPress={() => setLevel('hard')} />
+        <Text style={styles.title}>Choose Difficulty</Text>
+        {['easy', 'normal', 'hard'].map((lvl) => (
+          <TouchableOpacity
+            key={lvl}
+            style={styles.levelButton}
+            onPress={() => setLevel(lvl as Level)}
+          >
+            <Text style={styles.levelButtonText}>{lvl.toUpperCase()}</Text>
+          </TouchableOpacity>
+        ))}
       </View>
     );
   }
 
-  return <Game level={level} />;
+  return <Game level={level} goHome={() => setLevel(null)} />;
 }
 
-function Game({ level }: { level: Level }) {
+function Game({ level, goHome }: { level: Level; goHome: () => void }) {
   const [current, setCurrent] = useState(0);
   const [input, setInput] = useState('');
   const [score, setScore] = useState(0);
@@ -96,9 +100,7 @@ function Game({ level }: { level: Level }) {
   const [dbAnswers, setDbAnswers] = useState<AnswerRecord[]>([]);
   const [saved, setSaved] = useState(false);
 
-  let start = 0;
-  if (level === 'normal') start = 15;
-  if (level === 'hard') start = 25;
+  const start = level === 'normal' ? 15 : level === 'hard' ? 25 : 0;
   const questions = riddles.slice(start, start + levelConfig[level].count);
 
   useEffect(() => {
@@ -132,6 +134,7 @@ function Game({ level }: { level: Level }) {
         isCorrect,
       },
     ]);
+
     setInput('');
     if (current + 1 < questions.length) {
       setCurrent(current + 1);
@@ -143,34 +146,35 @@ function Game({ level }: { level: Level }) {
   if (finished) {
     return (
       <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.title}>Game Over!</Text>
+        <Text style={styles.title}>🎉 Game Over!</Text>
         <Text style={styles.score}>Your score: {score}</Text>
-        <Text style={styles.subtitle}>Review your answers (from database):</Text>
+        <Text style={styles.subtitle}>Review your answers</Text>
         {(dbAnswers.length > 0 ? dbAnswers : answers).map((a, i) => (
-          <View key={i} style={[styles.answerBox, a.isCorrect ? styles.correct : styles.incorrect]}>
+          <View
+            key={i}
+            style={[styles.answerBox, a.isCorrect ? styles.correct : styles.incorrect]}
+          >
             <Text style={styles.questionText}>{i + 1}. {a.question}</Text>
-            <Text>
-              Your answer: <Text style={{ fontWeight: 'bold' }}>{a.userAnswer || <Text style={{color: 'gray'}}>No answer</Text>}</Text>
-            </Text>
-            <Text>
-              Correct answer: <Text style={{ fontWeight: 'bold' }}>{a.correctAnswer}</Text>
-            </Text>
+            <Text>Your answer: <Text style={styles.bold}>{a.userAnswer || '—'}</Text></Text>
+            <Text>Correct answer: <Text style={styles.bold}>{a.correctAnswer}</Text></Text>
             <Text style={{ color: a.isCorrect ? 'green' : 'red', fontWeight: 'bold' }}>
-              {a.isCorrect ? 'Correct' : 'Wrong'}
+              {a.isCorrect ? '✔ Correct' : '✘ Wrong'}
             </Text>
           </View>
         ))}
-        <Button
-          title="Play Again"
-          onPress={() => {
-            setCurrent(0);
-            setScore(0);
-            setFinished(false);
-            setAnswers([]);
-            setDbAnswers([]);
-            setSaved(false);
-          }}
-        />
+        <TouchableOpacity style={styles.playButton} onPress={() => {
+          setCurrent(0);
+          setScore(0);
+          setFinished(false);
+          setAnswers([]);
+          setDbAnswers([]);
+          setSaved(false);
+        }}>
+          <Text style={styles.playButtonText}>🔄 Play Again</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.homeButton} onPress={goHome}>
+          <Text style={styles.playButtonText}>🏠 Home</Text>
+        </TouchableOpacity>
       </ScrollView>
     );
   }
@@ -183,13 +187,11 @@ function Game({ level }: { level: Level }) {
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
         <View style={styles.container}>
           <Text style={styles.level}>Level: {level.toUpperCase()}</Text>
-          <Text style={styles.progress}>
-            Question {current + 1} of {questions.length}
-          </Text>
+          <Text style={styles.progress}>Question {current + 1} of {questions.length}</Text>
           <Text style={styles.riddle}>{questions[current].question}</Text>
           <TextInput
             style={styles.input}
-            placeholder="Your answer"
+            placeholder="Type your answer..."
             value={input}
             onChangeText={setInput}
             autoCapitalize="none"
@@ -197,7 +199,9 @@ function Game({ level }: { level: Level }) {
             onSubmitEditing={handleSubmit}
             returnKeyType="done"
           />
-          <Button title="Submit" onPress={handleSubmit} />
+          <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
+            <Text style={styles.submitText}>Submit</Text>
+          </TouchableOpacity>
           <Text style={styles.score}>Score: {score}</Text>
         </View>
       </TouchableWithoutFeedback>
@@ -206,16 +210,105 @@ function Game({ level }: { level: Level }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 16, backgroundColor: '#fff' },
-  title: { fontSize: 28, marginBottom: 20, fontWeight: 'bold' },
-  subtitle: { fontSize: 18, marginBottom: 16, textAlign: 'center', color: '#6C63FF' },
-  level: { fontSize: 20, marginBottom: 10 },
-  progress: { fontSize: 16, marginBottom: 10 },
-  riddle: { fontSize: 18, marginBottom: 20, textAlign: 'center' },
-  input: { borderWidth: 1, borderColor: '#ccc', width: 220, padding: 10, marginBottom: 10, borderRadius: 8, fontSize: 16, backgroundColor: '#fafafa' },
-  score: { fontSize: 18, marginTop: 10 },
-  answerBox: { marginBottom: 16, padding: 12, borderRadius: 8, backgroundColor: '#f5f5f5', width: '100%' },
-  correct: { borderLeftWidth: 6, borderLeftColor: 'green' },
-  incorrect: { borderLeftWidth: 6, borderLeftColor: 'red' },
-  questionText: { fontWeight: 'bold', marginBottom: 4 },
+  container: {
+    flexGrow: 1,
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F9F9FF',
+  },
+  title: {
+    fontSize: 28,
+    marginBottom: 20,
+    fontWeight: 'bold',
+    color: '#4B2991',
+    textAlign: 'center',
+  },
+  subtitle: {
+    fontSize: 16,
+    marginBottom: 16,
+    color: '#6C63FF',
+    textAlign: 'center',
+  },
+  level: { fontSize: 20, marginBottom: 8, color: '#333' },
+  progress: { fontSize: 16, marginBottom: 10, color: '#666' },
+  riddle: {
+    fontSize: 18,
+    marginBottom: 20,
+    textAlign: 'center',
+    color: '#222',
+  },
+  input: {
+    width: '90%',
+    borderWidth: 1,
+    borderColor: '#999',
+    borderRadius: 10,
+    padding: 10,
+    backgroundColor: '#fff',
+    fontSize: 16,
+    marginBottom: 12,
+  },
+  score: { fontSize: 18, marginTop: 10, color: '#4B2991' },
+  submitButton: {
+    backgroundColor: '#6C63FF',
+    paddingVertical: 10,
+    paddingHorizontal: 30,
+    borderRadius: 10,
+    marginBottom: 10,
+  },
+  submitText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  answerBox: {
+    width: '100%',
+    padding: 12,
+    marginVertical: 6,
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    borderLeftWidth: 6,
+  },
+  correct: { borderLeftColor: 'green' },
+  incorrect: { borderLeftColor: 'red' },
+  questionText: {
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  bold: { fontWeight: 'bold' },
+  levelButton: {
+    backgroundColor: '#6C63FF',
+    paddingVertical: 14,
+    paddingHorizontal: 30,
+    borderRadius: 10,
+    marginBottom: 10,
+    width: '80%',
+    alignItems: 'center',
+  },
+  levelButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  playButton: {
+    backgroundColor: '#4CAF50',
+    padding: 12,
+    borderRadius: 10,
+    marginTop: 20,
+    width: '80%',
+    alignItems: 'center',
+  },
+  homeButton: {
+    backgroundColor: '#FF6F61',
+    padding: 12,
+    borderRadius: 10,
+    marginTop: 10,
+    width: '80%',
+    alignItems: 'center',
+  },
+  playButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
 });
