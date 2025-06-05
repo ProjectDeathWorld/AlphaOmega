@@ -14,7 +14,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import * as SQLite from 'expo-sqlite';
-import { riddles } from '../app/riddles';
+import { riddles } from '../data/riddles';
 
 let db: SQLite.SQLiteDatabase | null = null;
 
@@ -60,13 +60,22 @@ async function saveAnswersToDB(answers: AnswerRecord[]) {
 async function fetchAnswersFromDB(): Promise<AnswerRecord[]> {
   if (!db) return [];
   const results = await db.getAllAsync('SELECT question, correctAnswer, userAnswer, isCorrect FROM answers;');
-  return results.map(row => ({
-    question: row.question,
-    correctAnswer: row.correctAnswer,
-    userAnswer: row.userAnswer,
-    isCorrect: !!row.isCorrect,
-  }));
+  return results.map((row) => {
+    const typedRow = row as {
+      question: string;
+      correctAnswer: string;
+      userAnswer: string;
+      isCorrect: number;
+    };
+    return {
+      question: typedRow.question,
+      correctAnswer: typedRow.correctAnswer,
+      userAnswer: typedRow.userAnswer,
+      isCorrect: !!typedRow.isCorrect,
+    };
+  });
 }
+
 
 export default function LevelSelector() {
   const [level, setLevel] = useState<Level | null>(null);
